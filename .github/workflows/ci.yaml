@@ -1,0 +1,70 @@
+name: Continuous Integration
+on:
+  push:
+
+jobs:
+  e2e:
+    name: Cypress
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        name:
+          - test1
+          - test2
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: End-to-end tests
+        run: |
+          mkdir -p apps/app-e2e/.nyc_output
+          echo "{\"name\": \"${{ matrix.name }}\"}" > apps/app-e2e/.nyc_output/out.json
+
+      - name: Archive coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: .coverage-cypress-${{ matrix.name }}
+          path: apps/app-e2e/.nyc_output/out.json
+
+  combine-coverage:
+    name: Combine coverage
+    runs-on: ubuntu-22.04
+    timeout-minutes: 2
+    if: always() && contains(needs.*.result, 'success')
+    needs: [e2e]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - uses: actions/download-artifact@v4
+        id: download
+        with:
+          path: coverage
+          pattern: .coverage-*
+
+      - name: Generate report
+        run: |
+          ls -Ra
+          ls -Ra ${{steps.download.outputs.download-path}}
+          cat coverage/.coverage-test1/out.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: .coverage-merged
+          path: coverage
